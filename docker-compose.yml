@@ -1,0 +1,103 @@
+version: "3.9"
+networks:
+  overlay:
+    driver: overlay
+    name: lamp-network
+
+volumes:
+  nfs-apache-php:
+    driver_opts:
+      type: "nfs"
+      o: "addr=192.168.174.3,nolock,soft,rw"
+      device: ":/home/ivan/tfg_ivan/docker-services/nfs/web-php"
+  nfs-mysql-data:
+    driver_opts:
+      type: "nfs"
+      o: "addr=192.168.174.3,nolock,soft,rw"
+      device: ":/home/ivan/tfg_ivan/docker-services/nfs/mysql/data"
+  nfs-mysql-schema:
+    driver_opts:
+      type: "nfs"
+      o: "addr=192.168.174.3,nolock,soft,rw"
+      device: ":/home/ivan/tfg_ivan/docker-services/nfs/mysql/initdb"
+
+services:
+  web:
+    hostname: web-container
+    image: myregistry.tfg.com/php:8.2-apache-v1
+    deploy:
+      mode: replicated
+      replicas: 1
+      placement:
+        constraints:
+          - "node.hostname!=manager"
+      restart_policy:
+        condition: on-failure
+        delay: 5s
+        max_attempts: 3
+        window: 10s
+      resources:
+        limits:
+          cpus: '0.50'
+          memory: 512M
+    networks:
+      - overlay
+    volumes:
+      - "nfs-apache-php:/var/www/html"
+    ports:
+      - "8080:80"
+  mysql:
+    hostname: mysql-container
+    image: myregistry.tfg.com/mysql:8.0-debian-v1
+    command: --default-authentication-plugin=mysql_native_password
+    environment:
+      MYSQL_ROOT_PASSWORD: root1234
+      MYSQL_DATABASE: db-lamp
+      MYSQL_USER: ivan
+      MYSQL_PASSWORD: ivan1234
+    volumes:
+      - "nfs-mysql-schema:/docker-entrypoint-initdb.d"
+      - "nfs-mysql-data:/var/lib/mysql"
+    deploy:
+      restart_policy:
+        condition: on-failure
+        delay: 5s
+        max_attempts: 3
+        window: 10s
+      resources:
+        limits:
+          cpus: '0.50'
+          memory: 512M
+      placement:
+        constraints:
+          - "node.hostname!=manager"
+    networks:
+      - overlay
+    ports:
+      - "3306:3306"
+  phpmyadmin:
+    hostname: phpmyadmin-container
+    image: myregistry.tfg.com/phpmyadmin:v1
+    environment:
+      PMA_HOST: mysql-container
+      PMA_USER: ivan
+      PMA_PASSWORD: ivan1234
+      PMA_PORT: 3306
+    deploy:
+      restart_policy:
+        condition: on-failure
+        delay: 5s
+        max_attempts: 3
+        window: 10s
+      resources:
+        limits:
+          cpus: '0.50'
+          memory: 512M
+      placement:
+        constraints:
+          - "node.hostname!=manager"
+    networks:
+      - overlay
+    ports:
+      - "8081:80"
+
